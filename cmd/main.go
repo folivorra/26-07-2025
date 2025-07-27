@@ -14,4 +14,5 @@ func main() {
 	logger := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug})
 
 	cfg := config.NewConfig()
+
 }
