@@ -1,0 +1,7 @@
+package repository
+
+import "github.com/folivorra/ziper/internal/model"
+
+type TaskRepo interface {
+	Save(task *model.Task)
+}
