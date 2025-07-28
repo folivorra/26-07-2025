@@ -14,14 +14,12 @@ const (
 	FileStatusCompleted   FileStatus = "completed"
 	FileStatusFailed      FileStatus = "failed"
 	FileStatusInvalidType FileStatus = "invalid_type"
-
-	Max
 )
 
 type Task struct {
 	ID          uint64     `json:"id"`
 	Status      TaskStatus `json:"status"`
-	Files       []*File    `json:"urls"`
+	Files       []*File    `json:"files,omitempty"`
 	ArchivePath string     `json:"archive_path,omitempty"`
 }
 
