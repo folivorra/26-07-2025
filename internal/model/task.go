@@ -6,18 +6,22 @@ type (
 )
 
 const (
-	TaskStatusAccepted  TaskStatus = "accepted"
-	TaskStatusCompleted TaskStatus = "completed"
+	TaskStatusAccepted   TaskStatus = "accepted"
+	TaskStatusInProgress TaskStatus = "in_progress"
+	TaskStatusCompleted  TaskStatus = "completed"
 
-	FileStatusOk          FileStatus = "ok"
+	FileStatusAccepted    FileStatus = "accepted"
+	FileStatusCompleted   FileStatus = "completed"
 	FileStatusFailed      FileStatus = "failed"
 	FileStatusInvalidType FileStatus = "invalid_type"
+
+	Max
 )
 
 type Task struct {
 	ID          uint64     `json:"id"`
 	Status      TaskStatus `json:"status"`
-	Files       []File     `json:"urls"`
+	Files       []*File    `json:"urls"`
 	ArchivePath string     `json:"archive_path,omitempty"`
 }
 
