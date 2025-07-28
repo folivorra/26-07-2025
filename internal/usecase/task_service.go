@@ -2,12 +2,15 @@ package usecase
 
 import (
 	"fmt"
+	"github.com/folivorra/ziper/internal/adapter/archiver"
+	"github.com/folivorra/ziper/internal/adapter/dowloader"
 	"github.com/folivorra/ziper/internal/model"
 	"github.com/folivorra/ziper/internal/repository"
 	"github.com/folivorra/ziper/internal/transport/validation"
 	"log/slog"
 	net "net/url"
 	"path"
+	"sync"
 	"sync/atomic"
 )
 
@@ -19,17 +22,29 @@ type TaskService struct {
 	idCounter      atomic.Uint64
 	lockManager    *LockTaskManager
 	validr         validation.FileValidator
-	dowloadr       FileDownloader
+	dowloadr       dowloader.Downloader
+	archiver       archiver.Archiver
 	logger         *slog.Logger
 }
 
-func NewTaskService(repo repository.TaskRepo, maxTasks uint64, maxFilesInTask uint64, logger *slog.Logger) *TaskService {
+func NewTaskService(
+	repo repository.TaskRepo,
+	maxTasks uint64,
+	maxFilesInTask uint64,
+	logger *slog.Logger,
+	validr validation.FileValidator,
+	dowloadr dowloader.Downloader,
+	archiver archiver.Archiver,
+) *TaskService {
 	return &TaskService{
 		repo:           repo,
 		maxTasks:       maxTasks,
 		maxFilesInTask: maxFilesInTask,
-		logger:         logger,
 		lockManager:    NewLockTaskManager(),
+		validr:         validr,
+		dowloadr:       dowloadr,
+		archiver:       archiver,
+		logger:         logger,
 	}
 }
 
@@ -49,7 +64,7 @@ func (s *TaskService) CreateTask() (uint64, error) {
 		ID:          id,
 		Status:      model.TaskStatusAccepted,
 		Files:       make([]*model.File, 0, 3),
-		ArchivePath: fmt.Sprintf("http://localhost:8080/archives/archive_%d", id),
+		ArchivePath: fmt.Sprintf("http://localhost:8080/archives/task-%d", id),
 	}
 	s.repo.Save(task)
 	s.activeTasks.Add(1)
@@ -168,9 +183,14 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 	task.Status = model.TaskStatusInProgress
 
 	sem := NewSemaphore(3)
+	wg := &sync.WaitGroup{}
+
 	for _, file := range task.Files {
 		sem.Acquire()
+		wg.Add(1)
 		go func(file *model.File) {
+			defer wg.Done()
+			defer sem.Release()
 			defer func() {
 				if r := recover(); r != nil {
 					s.logger.Error("panic during file processing",
@@ -182,14 +202,30 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 				file.Status = model.FileStatusFailed
 			}()
 
-			defer sem.Release()
-
 			s.logger.Info("processing file",
 				slog.Uint64("task_id", task.ID),
 				slog.String("file_url", file.URL),
 			)
 
-			//.........
+			dirPath, err := s.dowloadr.DownloadFile(file.URL, task.ID)
+			if err != nil {
+				s.logger.Error("error downloading file",
+					slog.Uint64("task_id", task.ID),
+					slog.String("file_url", file.URL),
+					slog.String("error", err.Error()),
+				)
+				file.Status = model.FileStatusFailed
+			}
+
+			if err := s.archiver.ArchiveDirectory(dirPath, task.ArchivePath); err != nil {
+				s.logger.Error("error adding file to archive",
+					slog.Uint64("task_id", task.ID),
+					slog.String("file_url", file.URL),
+					slog.String("error", err.Error()),
+				)
+				file.Status = model.FileStatusFailed
+				return
+			}
 
 			file.Status = model.FileStatusCompleted
 			s.logger.Info("file processed successfully",
@@ -199,14 +235,14 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 		}(file)
 	}
 
+	wg.Wait()
 	task.Status = model.TaskStatusCompleted
+	s.activeTasks.Add(^uint64(0))
 
 	s.logger.Info("task processing completed",
 		slog.Uint64("id", task.ID),
 		slog.String("status", string(task.Status)),
 	)
-
-	s.activeTasks.Add(^uint64(0))
 
 	return nil
 }
