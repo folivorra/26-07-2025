@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/folivorra/ziper/internal/model"
 	"github.com/folivorra/ziper/internal/repository"
+	"github.com/folivorra/ziper/internal/transport/validation"
 	"log/slog"
 	net "net/url"
 	"path"
@@ -16,8 +17,10 @@ type TaskService struct {
 	maxTasks       uint64
 	maxFilesInTask uint64
 	idCounter      atomic.Uint64
-	logger         *slog.Logger
 	lockManager    *LockTaskManager
+	validr         validation.FileValidator
+	dowloadr       FileDownloader
+	logger         *slog.Logger
 }
 
 func NewTaskService(repo repository.TaskRepo, maxTasks uint64, maxFilesInTask uint64, logger *slog.Logger) *TaskService {
@@ -43,9 +46,10 @@ func (s *TaskService) CreateTask() (uint64, error) {
 
 	id := s.idCounter.Add(1)
 	task := &model.Task{
-		ID:     id,
-		Status: model.TaskStatusAccepted,
-		Files:  make([]*model.File, 0, 3),
+		ID:          id,
+		Status:      model.TaskStatusAccepted,
+		Files:       make([]*model.File, 0, 3),
+		ArchivePath: fmt.Sprintf("http://localhost:8080/archives/archive_%d", id),
 	}
 	s.repo.Save(task)
 	s.activeTasks.Add(1)
@@ -65,25 +69,6 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 		slog.String("url", url),
 	)
 
-	status := model.FileStatusAccepted
-
-	if _, err := net.ParseRequestURI(url); err != nil {
-		s.logger.Warn("invalid url",
-			slog.String("url", url),
-			slog.String("error", err.Error()),
-		)
-		status = model.FileStatusFailed
-		//return fmt.Errorf("invalid url %s", url)
-	}
-
-	if !IsAllowedFileType(url) {
-		s.logger.Warn("invalid file type",
-			slog.String("file type", path.Ext(url)),
-		)
-		status = model.FileStatusInvalidType
-		//return fmt.Errorf("invalid file type: %s", path.Ext(url))
-	}
-
 	task, err := s.repo.GetByID(id)
 	if err != nil {
 		s.logger.Error("error getting task by id",
@@ -101,13 +86,42 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 		return fmt.Errorf("task exceeds max files %d", s.maxFilesInTask)
 	}
 
+	status := model.FileStatusAccepted
+
+	if _, err := net.ParseRequestURI(url); err != nil {
+		s.logger.Warn("invalid url",
+			slog.String("url", url),
+			slog.String("error", err.Error()),
+		)
+		status = model.FileStatusFailed
+	} else {
+		if !s.validr.IsReachable(url) {
+			s.logger.Warn("file not reachable",
+				slog.String("url", url),
+			)
+			status = model.FileStatusFailed
+		}
+
+		if !IsAllowedFileType(url) {
+			s.logger.Warn("invalid file type",
+				slog.String("file type", path.Ext(url)),
+			)
+			status = model.FileStatusInvalidType
+		}
+	}
+
 	file := &model.File{
 		Status: status,
 		URL:    url,
 	}
 
 	task.Files = append(task.Files, file)
-	s.logger.Info("added file to task", file)
+
+	s.logger.Info("added file to task",
+		slog.Uint64("task_id", task.ID),
+		slog.String("file_status", string(file.Status)),
+		slog.String("file_url", file.URL),
+	)
 
 	return nil
 }
@@ -125,11 +139,13 @@ func (s *TaskService) GetTaskStatusAndZipPath(id uint64) (model.TaskStatus, stri
 	}
 
 	status := task.Status
-	//if len(task.Files) == 3 {
-	//	zipPath := GetZipPath()
-	//}
+	zipPath := ""
+	if len(task.Files) == int(s.maxFilesInTask) || task.Status == model.TaskStatusCompleted {
+		zipPath = task.ArchivePath
 
-	return status, "", nil
+	}
+
+	return status, zipPath, nil
 }
 
 func (s *TaskService) ProcessTask(task *model.Task) error {
@@ -155,6 +171,17 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 	for _, file := range task.Files {
 		sem.Acquire()
 		go func(file *model.File) {
+			defer func() {
+				if r := recover(); r != nil {
+					s.logger.Error("panic during file processing",
+						slog.Uint64("task_id", task.ID),
+						slog.String("file_url", file.URL),
+						slog.Any("error", r),
+					)
+				}
+				file.Status = model.FileStatusFailed
+			}()
+
 			defer sem.Release()
 
 			s.logger.Info("processing file",

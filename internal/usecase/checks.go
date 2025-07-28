@@ -10,7 +10,7 @@ func IsAllowedFileType(url string) bool {
 }
 
 func CanAddFileInTask(activeFiles uint64, maxFiles uint64) bool {
-	return activeFiles >= maxFiles
+	return activeFiles < maxFiles
 }
 
 func CanAddTask(activeTasks *atomic.Uint64, maxTasks uint64) bool {
