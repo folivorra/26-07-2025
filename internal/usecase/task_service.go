@@ -2,16 +2,17 @@ package usecase
 
 import (
 	"fmt"
-	"github.com/folivorra/ziper/internal/adapter/archiver"
-	"github.com/folivorra/ziper/internal/adapter/dowloader"
-	"github.com/folivorra/ziper/internal/model"
-	"github.com/folivorra/ziper/internal/repository"
-	"github.com/folivorra/ziper/internal/transport/validation"
 	"log/slog"
 	net "net/url"
 	"path"
 	"sync"
 	"sync/atomic"
+
+	"github.com/folivorra/ziper/internal/adapter/archiver"
+	"github.com/folivorra/ziper/internal/adapter/downloader"
+	"github.com/folivorra/ziper/internal/model"
+	"github.com/folivorra/ziper/internal/repository"
+	"github.com/folivorra/ziper/internal/transport/validation"
 )
 
 type TaskService struct {
@@ -22,7 +23,7 @@ type TaskService struct {
 	idCounter      atomic.Uint64
 	lockManager    *LockTaskManager
 	validr         validation.FileValidator
-	dowloadr       dowloader.Downloader
+	dowloadr       downloader.Downloader
 	archiver       archiver.Archiver
 	logger         *slog.Logger
 }
@@ -33,7 +34,7 @@ func NewTaskService(
 	maxFilesInTask uint64,
 	logger *slog.Logger,
 	validr validation.FileValidator,
-	dowloadr dowloader.Downloader,
+	dowloadr downloader.Downloader,
 	archiver archiver.Archiver,
 ) *TaskService {
 	return &TaskService{
@@ -157,7 +158,6 @@ func (s *TaskService) GetTaskStatusAndZipPath(id uint64) (model.TaskStatus, stri
 	zipPath := ""
 	if len(task.Files) == int(s.maxFilesInTask) || task.Status == model.TaskStatusCompleted {
 		zipPath = task.ArchivePath
-
 	}
 
 	return status, zipPath, nil

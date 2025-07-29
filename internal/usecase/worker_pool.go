@@ -2,9 +2,10 @@ package usecase
 
 import (
 	"context"
-	"github.com/folivorra/ziper/internal/model"
 	"log/slog"
 	"sync"
+
+	"github.com/folivorra/ziper/internal/model"
 )
 
 type WorkerPool struct {

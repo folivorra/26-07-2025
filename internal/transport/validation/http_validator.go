@@ -1,14 +1,19 @@
 package validation
 
-import "net/http"
+import (
+	"net/http"
+	"time"
+)
 
 type HTTPValidator struct {
 	client *http.Client
 }
 
-func NewHTTPValidator(client *http.Client) *HTTPValidator {
+func NewHTTPValidator(timeout time.Duration) *HTTPValidator {
 	return &HTTPValidator{
-		client: client,
+		client: &http.Client{
+			Timeout: timeout,
+		},
 	}
 }
 

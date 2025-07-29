@@ -2,8 +2,9 @@ package repository
 
 import (
 	"fmt"
-	"github.com/folivorra/ziper/internal/model"
 	"sync"
+
+	"github.com/folivorra/ziper/internal/model"
 )
 
 type InMemoryTaskRepo struct {
