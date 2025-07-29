@@ -16,18 +16,19 @@ type App struct {
 	logger     *slog.Logger
 }
 
-func NewApp(ctx context.Context, logger slog.Logger) *App {
+func NewApp(ctx context.Context, logger *slog.Logger) *App {
 	newCtx, cancel := context.WithCancel(ctx)
 	return &App{
 		ctx:        newCtx,
-		shutdownCh: make(chan os.Signal),
+		shutdownCh: make(chan os.Signal, 1),
+		cleanup:    make([]func(context.Context), 10),
 		cancel:     cancel,
-		logger:     &logger,
+		logger:     logger,
 	}
 }
 
 func (a *App) Run() {
-	signal.Notify(a.shutdownCh, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(a.shutdownCh, syscall.SIGTERM, os.Interrupt)
 
 	a.logger.Info("app started")
 

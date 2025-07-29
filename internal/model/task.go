@@ -21,6 +21,7 @@ type Task struct {
 	Status      TaskStatus `json:"status"`
 	Files       []*File    `json:"files,omitempty"`
 	ArchivePath string     `json:"archive_path,omitempty"`
+	ArchiveURL  string     `json:"archive_url,omitempty"`
 }
 
 type File struct {

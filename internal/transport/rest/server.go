@@ -2,12 +2,12 @@ package rest
 
 import (
 	"context"
-	"github.com/folivorra/ziper/internal/usecase"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/folivorra/ziper/app"
+	"github.com/folivorra/ziper/internal/usecase"
 	"github.com/gorilla/mux"
 )
 
@@ -22,8 +22,12 @@ func NewServer(app *app.App, ts *usecase.TaskService, logger *slog.Logger, port 
 	c.RegisterRoutes(r)
 
 	srv := &http.Server{
-		Addr:    ":" + port,
-		Handler: r,
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       5 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	s := &Server{

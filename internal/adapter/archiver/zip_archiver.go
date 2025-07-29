@@ -3,15 +3,34 @@ package archiver
 import (
 	"archive/zip"
 	"bytes"
+	"context"
+	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/folivorra/ziper/app"
 )
 
-type ZipArchiver struct{}
+type ZipArchiver struct {
+	a      *app.App
+	logger *slog.Logger
+}
 
-func NewZipArchiver() *ZipArchiver {
-	return &ZipArchiver{}
+func NewZipArchiver(a *app.App, logger *slog.Logger) *ZipArchiver {
+	za := &ZipArchiver{
+		a:      a,
+		logger: logger,
+	}
+
+	za.a.RegisterCleanup(func(ctx context.Context) {
+		if err := os.RemoveAll("archives"); err != nil {
+			za.logger.Warn("failed to remove old archives directory")
+		}
+	})
+
+	return za
 }
 
 func (a *ZipArchiver) ArchiveDirectory(dirPath, zipPath string) error {
@@ -22,31 +41,24 @@ func (a *ZipArchiver) ArchiveDirectory(dirPath, zipPath string) error {
 		if err != nil {
 			return err
 		}
-		// Пропускаем директории
+
 		if info.IsDir() {
 			return nil
 		}
 
-		// Открываем файл
 		file, err := os.Open(filePath)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		// Получаем относительный путь, чтобы структура директорий сохранялась
-		relPath, err := filepath.Rel(dirPath, filePath)
-		if err != nil {
-			return err
-		}
+		relPath := info.Name()
 
-		// Создаём файл внутри архива
 		writer, err := zipWriter.Create(relPath)
 		if err != nil {
 			return err
 		}
 
-		// Копируем содержимое файла в архив
 		_, err = io.Copy(writer, file)
 		return err
 	})
@@ -58,6 +70,10 @@ func (a *ZipArchiver) ArchiveDirectory(dirPath, zipPath string) error {
 
 	if err := zipWriter.Close(); err != nil {
 		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(zipPath), os.ModePerm); err != nil {
+		return fmt.Errorf("failed to create archive directory: %w", err)
 	}
 
 	err = os.WriteFile(zipPath, buf.Bytes(), 0644)

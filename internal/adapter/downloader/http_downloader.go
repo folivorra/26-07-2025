@@ -1,73 +1,85 @@
 package downloader
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	urler "net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/folivorra/ziper/app"
+	"github.com/google/uuid"
 )
 
 const destDir = "downloads"
 
 type HTTPDownloader struct {
 	client *http.Client
+	a      *app.App
+	logger *slog.Logger
 }
 
-func NewHTTPDownloader(timeout time.Duration) *HTTPDownloader {
-	return &HTTPDownloader{
+func NewHTTPDownloader(a *app.App, logger *slog.Logger, timeout time.Duration) *HTTPDownloader {
+	httpd := &HTTPDownloader{
 		client: &http.Client{Timeout: timeout},
+		a:      a,
+		logger: logger,
 	}
+
+	httpd.a.RegisterCleanup(func(ctx context.Context) {
+		if err := os.RemoveAll("downloads"); err != nil {
+			httpd.logger.Warn("failed to remove old downloads directory")
+		}
+	})
+
+	return httpd
 }
 
-func (d *HTTPDownloader) DownloadFile(url string, id uint64) (string, error) {
-	// Парсим URL и извлекаем имя файла
+func (d *HTTPDownloader) DownloadFile(url string, id uint64) error {
 	parsedURL, err := urler.Parse(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse URL: %w", err)
+		return fmt.Errorf("failed to parse URL: %w", err)
 	}
 	tokens := strings.Split(parsedURL.Path, "/")
-	fileName := tokens[len(tokens)-1]
-	if fileName == "" {
-		fileName = "unnamed_download"
+	baseName := tokens[len(tokens)-1]
+	if baseName == "" {
+		baseName = "unnamed_download"
 	}
 
-	// Создаём папку если нужно
+	uuidStr := uuid.New().String()
+	fileName := fmt.Sprintf("%s_%s", uuidStr, baseName)
+
 	err = os.MkdirAll(fmt.Sprintf("%s/task-%d", destDir, id), os.ModePerm)
 	if err != nil {
-		return "", fmt.Errorf("failed to create destination directory: %w", err)
+		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
-	filePath := filepath.Join(destDir, fileName)
+	filePath := fmt.Sprintf("%s/task-%d/%s", destDir, id, fileName)
 
-	// HTTP GET
 	resp, err := d.client.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to download file: %w", err)
+		return fmt.Errorf("failed to download file: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download file, status: %s", resp.Status)
+		return fmt.Errorf("failed to download file, status: %s", resp.Status)
 	}
 
-	// Создаём файл
 	out, err := os.Create(filePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer out.Close()
 
-	// Пишем содержимое
-	written, err := io.Copy(out, resp.Body)
+	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("failed to save file: %w", err)
+		return fmt.Errorf("failed to save file: %w", err)
 	}
 
-	fmt.Printf("Downloaded file %s with length %d\n", fileName, written)
-
-	return filePath, nil
+	return nil
 }

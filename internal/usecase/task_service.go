@@ -26,6 +26,7 @@ type TaskService struct {
 	dowloadr       downloader.Downloader
 	archiver       archiver.Archiver
 	logger         *slog.Logger
+	taskQueue      chan *model.Task
 }
 
 func NewTaskService(
@@ -36,6 +37,7 @@ func NewTaskService(
 	validr validation.FileValidator,
 	dowloadr downloader.Downloader,
 	archiver archiver.Archiver,
+	taskQueue chan *model.Task,
 ) *TaskService {
 	return &TaskService{
 		repo:           repo,
@@ -46,18 +48,25 @@ func NewTaskService(
 		dowloadr:       dowloadr,
 		archiver:       archiver,
 		logger:         logger,
+		taskQueue:      taskQueue,
 	}
 }
 
 func (s *TaskService) CreateTask() (uint64, error) {
 	s.logger.Info("creating new task")
 
-	if !CanAddTask(&s.activeTasks, s.maxTasks) {
-		s.logger.Error("active tasks exceeds max tasks",
-			slog.Uint64("max tasks", s.maxTasks),
-			slog.Uint64("active tasks", s.activeTasks.Load()),
-		)
-		return 0, fmt.Errorf("active tasks exceeds max tasks %d", s.maxTasks)
+	for {
+		current := s.activeTasks.Load()
+		if current >= s.maxTasks {
+			s.logger.Error("active tasks exceeds max tasks",
+				slog.Uint64("max tasks", s.maxTasks),
+				slog.Uint64("active tasks", current),
+			)
+			return 0, fmt.Errorf("active tasks exceeds max tasks %d", s.maxTasks)
+		}
+		if s.activeTasks.CompareAndSwap(current, current+1) {
+			break
+		}
 	}
 
 	id := s.idCounter.Add(1)
@@ -65,10 +74,10 @@ func (s *TaskService) CreateTask() (uint64, error) {
 		ID:          id,
 		Status:      model.TaskStatusAccepted,
 		Files:       make([]*model.File, 0, 3),
-		ArchivePath: fmt.Sprintf("http://localhost:8080/archives/task-%d", id),
+		ArchiveURL:  fmt.Sprintf("http://localhost:8080/archives/task-%d", id),
+		ArchivePath: fmt.Sprintf("archives/task-%d.zip", id),
 	}
 	s.repo.Save(task)
-	s.activeTasks.Add(1)
 
 	s.logger.Info("task created")
 
@@ -132,6 +141,9 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 	}
 
 	task.Files = append(task.Files, file)
+	if len(task.Files) == 3 {
+		s.taskQueue <- task
+	}
 
 	s.logger.Info("added file to task",
 		slog.Uint64("task_id", task.ID),
@@ -142,7 +154,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 	return nil
 }
 
-func (s *TaskService) GetTaskStatusAndZipPath(id uint64) (model.TaskStatus, string, error) {
+func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, string, error) {
 	s.logger.Info("getting task status", slog.Uint64("id", id))
 
 	task, err := s.repo.GetByID(id)
@@ -155,12 +167,12 @@ func (s *TaskService) GetTaskStatusAndZipPath(id uint64) (model.TaskStatus, stri
 	}
 
 	status := task.Status
-	zipPath := ""
+	archURL := ""
 	if len(task.Files) == int(s.maxFilesInTask) || task.Status == model.TaskStatusCompleted {
-		zipPath = task.ArchivePath
+		archURL = task.ArchiveURL
 	}
 
-	return status, zipPath, nil
+	return status, archURL, nil
 }
 
 func (s *TaskService) ProcessTask(task *model.Task) error {
@@ -182,6 +194,8 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 
 	task.Status = model.TaskStatusInProgress
 
+	dirPath := fmt.Sprintf("downloads/task-%d", task.ID)
+
 	sem := NewSemaphore(3)
 	wg := &sync.WaitGroup{}
 
@@ -202,12 +216,12 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 				file.Status = model.FileStatusFailed
 			}()
 
-			s.logger.Info("processing file",
+			s.logger.Info("downloading file",
 				slog.Uint64("task_id", task.ID),
 				slog.String("file_url", file.URL),
 			)
 
-			dirPath, err := s.dowloadr.DownloadFile(file.URL, task.ID)
+			err := s.dowloadr.DownloadFile(file.URL, task.ID)
 			if err != nil {
 				s.logger.Error("error downloading file",
 					slog.Uint64("task_id", task.ID),
@@ -217,18 +231,8 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 				file.Status = model.FileStatusFailed
 			}
 
-			if err := s.archiver.ArchiveDirectory(dirPath, task.ArchivePath); err != nil {
-				s.logger.Error("error adding file to archive",
-					slog.Uint64("task_id", task.ID),
-					slog.String("file_url", file.URL),
-					slog.String("error", err.Error()),
-				)
-				file.Status = model.FileStatusFailed
-				return
-			}
-
 			file.Status = model.FileStatusCompleted
-			s.logger.Info("file processed successfully",
+			s.logger.Info("file downloading successfully",
 				slog.Uint64("task_id", task.ID),
 				slog.String("file_url", file.URL),
 			)
@@ -236,6 +240,16 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 	}
 
 	wg.Wait()
+
+	if err := s.archiver.ArchiveDirectory(dirPath, task.ArchivePath); err != nil {
+		s.logger.Error("error adding file to archive",
+			slog.Uint64("task_id", task.ID),
+			slog.String("dir_path", dirPath),
+			slog.String("error", err.Error()),
+		)
+		//task.Status = TaskStatusFailed
+	}
+
 	task.Status = model.TaskStatusCompleted
 	s.activeTasks.Add(^uint64(0))
 

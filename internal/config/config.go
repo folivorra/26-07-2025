@@ -9,8 +9,8 @@ import (
 type Config struct {
 	Port     string        `env:"PORT" envDefault:"8080"`
 	Timeout  time.Duration `env:"TIMEOUT" envDefault:"5s"`
-	MaxTasks int           `env:"MAX_TASKS" envDefault:"3"`
-	MaxFiles int           `env:"MAX_FILES" envDefault:"3"`
+	MaxTasks uint64        `env:"MAX_TASKS" envDefault:"3"`
+	MaxFiles uint64        `env:"MAX_FILES" envDefault:"3"`
 }
 
 func NewConfig() *Config {

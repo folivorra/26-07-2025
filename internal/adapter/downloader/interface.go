@@ -1,5 +1,5 @@
 package downloader
 
 type Downloader interface {
-	DownloadFile(url string, id uint64) (string, error)
+	DownloadFile(url string, id uint64) error
 }
