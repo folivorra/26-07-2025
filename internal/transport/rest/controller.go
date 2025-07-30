@@ -28,7 +28,7 @@ func NewController(taskService *usecase.TaskService, logger *slog.Logger) *Contr
 func (c *Controller) CreateTaskHandler(w http.ResponseWriter, _ *http.Request) {
 	id, err := c.taskService.CreateTask()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (c *Controller) AddFileByIDHandler(w http.ResponseWriter, r *http.Request) 
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 64)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -60,7 +60,7 @@ func (c *Controller) AddFileByIDHandler(w http.ResponseWriter, r *http.Request) 
 	}{}
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -77,13 +77,13 @@ func (c *Controller) GetTaskStatusAndArchivePathHandler(w http.ResponseWriter, r
 	vars := mux.Vars(r)
 	id, err := strconv.ParseUint(vars["id"], 10, 64)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	status, url, err := c.taskService.GetTaskStatusAndArchiveURL(id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -107,15 +107,19 @@ func (c *Controller) DownloadArchiveHandler(w http.ResponseWriter, r *http.Reque
 
 	idStr := filename[len("task-") : len(filename)-len(".zip")]
 	id, err := strconv.ParseUint(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid archive filename", http.StatusBadRequest)
+		return
+	}
 
 	_, archiveURL, err := c.taskService.GetTaskStatusAndArchiveURL(id)
 	if err != nil {
-		http.Error(w, "failed to get archive path", http.StatusInternalServerError)
+		http.Error(w, "failed to get archive path", http.StatusNotFound)
 		return
 	}
 
 	if archiveURL == "" {
-		http.Error(w, "archive not ready", http.StatusNotFound)
+		http.Error(w, "archive not ready", http.StatusAccepted)
 		return
 	}
 
