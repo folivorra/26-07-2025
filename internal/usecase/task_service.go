@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"fmt"
+	"github.com/folivorra/ziper/internal/config"
 	"log/slog"
 	net "net/url"
 	"path"
@@ -16,23 +17,21 @@ import (
 )
 
 type TaskService struct {
-	repo           repository.TaskRepo
-	activeTasks    atomic.Uint64
-	maxTasks       uint64
-	maxFilesInTask uint64
-	idCounter      atomic.Uint64
-	lockManager    *LockTaskManager
-	validr         validation.FileValidator
-	dowloadr       downloader.Downloader
-	archiver       archiver.Archiver
-	logger         *slog.Logger
-	taskQueue      chan *model.Task
+	repo        repository.TaskRepo
+	activeTasks atomic.Uint64
+	cfg         config.Config
+	idCounter   atomic.Uint64
+	lockManager *LockTaskManager
+	validr      validation.FileValidator
+	dowloadr    downloader.Downloader
+	archiver    archiver.Archiver
+	logger      *slog.Logger
+	taskQueue   chan *model.Task
 }
 
 func NewTaskService(
 	repo repository.TaskRepo,
-	maxTasks uint64,
-	maxFilesInTask uint64,
+	cfg config.Config,
 	logger *slog.Logger,
 	locker *LockTaskManager,
 	validr validation.FileValidator,
@@ -41,15 +40,14 @@ func NewTaskService(
 	taskQueue chan *model.Task,
 ) *TaskService {
 	return &TaskService{
-		repo:           repo,
-		maxTasks:       maxTasks,
-		maxFilesInTask: maxFilesInTask,
-		lockManager:    locker,
-		validr:         validr,
-		dowloadr:       dowloadr,
-		archiver:       archiver,
-		logger:         logger,
-		taskQueue:      taskQueue,
+		repo:        repo,
+		cfg:         cfg,
+		lockManager: locker,
+		validr:      validr,
+		dowloadr:    dowloadr,
+		archiver:    archiver,
+		logger:      logger,
+		taskQueue:   taskQueue,
 	}
 }
 
@@ -58,12 +56,12 @@ func (s *TaskService) CreateTask() (uint64, error) {
 
 	for {
 		current := s.activeTasks.Load()
-		if current >= s.maxTasks {
+		if current >= s.cfg.MaxTasks {
 			s.logger.Error("active tasks exceeds max tasks",
-				slog.Uint64("max tasks", s.maxTasks),
+				slog.Uint64("max tasks", s.cfg.MaxTasks),
 				slog.Uint64("active tasks", current),
 			)
-			return 0, fmt.Errorf("active tasks exceeds max tasks %d", s.maxTasks)
+			return 0, fmt.Errorf("active tasks exceeds max tasks %d", s.cfg.MaxTasks)
 		}
 		if s.activeTasks.CompareAndSwap(current, current+1) {
 			break
@@ -74,9 +72,9 @@ func (s *TaskService) CreateTask() (uint64, error) {
 	task := &model.Task{
 		ID:          id,
 		Status:      model.TaskStatusAccepted,
-		Files:       make([]*model.File, 0, 3),
-		ArchiveURL:  fmt.Sprintf("http://localhost:8080/archives/task-%d.zip", id),
-		ArchivePath: fmt.Sprintf("archives/task-%d.zip", id),
+		Files:       make([]*model.File, 0, s.cfg.MaxFilesInTask),
+		ArchiveURL:  fmt.Sprintf("http://localhost:%s/%s/task-%d.zip", s.cfg.Port, s.cfg.ArchDir, id),
+		ArchivePath: fmt.Sprintf("%s/task-%d.zip", s.cfg.ArchDir, id),
 	}
 	s.repo.Save(task)
 
@@ -104,12 +102,12 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 		return fmt.Errorf("not found task by id %d", id)
 	}
 
-	if !CanAddFileInTask(uint64(len(task.Files)), s.maxFilesInTask) {
+	if !CanAddFileInTask(uint64(len(task.Files)), s.cfg.MaxFilesInTask) {
 		s.logger.Error("task exceeds max files",
-			slog.Uint64("maxFilesInTask", s.maxFilesInTask),
+			slog.Uint64("maxFilesInTask", s.cfg.MaxFilesInTask),
 			slog.Uint64("currentFiles", uint64(len(task.Files))),
 		)
-		return fmt.Errorf("task exceeds max files %d", s.maxFilesInTask)
+		return fmt.Errorf("task exceeds max files %d", s.cfg.MaxFilesInTask)
 	}
 
 	status := model.FileStatusAccepted
@@ -147,7 +145,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 
 	task.Files = append(task.Files, file)
 
-	if len(task.Files) == int(s.maxFilesInTask) {
+	if len(task.Files) == int(s.cfg.MaxFilesInTask) {
 		s.taskQueue <- task
 		s.logger.Info("task goes to queue")
 	}
@@ -177,7 +175,7 @@ func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, s
 
 	status := task.Status
 	archURL := ""
-	if len(task.Files) == int(s.maxFilesInTask) || task.Status == model.TaskStatusCompleted {
+	if len(task.Files) == int(s.cfg.MaxFilesInTask) || task.Status == model.TaskStatusCompleted {
 		archURL = task.ArchiveURL
 	}
 
@@ -254,7 +252,7 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 
 	wg.Wait()
 
-	if err := s.archiver.ArchiveDirectory(dirPath, task.ArchivePath); err != nil {
+	if err := s.archiver.ArchiveDirectory(dirPath); err != nil {
 		s.logger.Error("error adding file to archive",
 			slog.Uint64("task_id", task.ID),
 			slog.String("dir_path", dirPath),

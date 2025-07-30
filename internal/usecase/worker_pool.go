@@ -91,16 +91,3 @@ func (wp *WorkerPool) Stop() {
 	close(wp.tasks)
 	wp.wg.Wait()
 }
-
-//func (wp *WorkerPool) AddTask(task *model.Task) {
-//	select {
-//	case wp.tasks <- task:
-//		wp.logger.Info("task added to worker pool",
-//			slog.Uint64("task_id", task.ID),
-//		)
-//	case <-wp.ctx.Done():
-//		wp.logger.Warn("context done, cannot add task to worker pool",
-//			slog.Uint64("task_id", task.ID),
-//		)
-//	}
-//}

@@ -15,19 +15,21 @@ import (
 
 type ZipArchiver struct {
 	a      *app.App
+	zipDir string
 	logger *slog.Logger
 }
 
 var _ Archiver = (*ZipArchiver)(nil)
 
-func NewZipArchiver(a *app.App, logger *slog.Logger) *ZipArchiver {
+func NewZipArchiver(a *app.App, zipDir string, logger *slog.Logger) *ZipArchiver {
 	za := &ZipArchiver{
 		a:      a,
+		zipDir: zipDir,
 		logger: logger,
 	}
 
 	za.a.RegisterCleanup(func(ctx context.Context) {
-		if err := os.RemoveAll("archives"); err != nil {
+		if err := os.RemoveAll(za.zipDir); err != nil {
 			za.logger.Warn("failed to remove archives directory")
 			return
 		}
@@ -37,7 +39,7 @@ func NewZipArchiver(a *app.App, logger *slog.Logger) *ZipArchiver {
 	return za
 }
 
-func (a *ZipArchiver) ArchiveDirectory(dirPath, zipPath string) error {
+func (a *ZipArchiver) ArchiveDirectory(dirPath string) error {
 	var buf bytes.Buffer
 	zipWriter := zip.NewWriter(&buf)
 
@@ -76,11 +78,11 @@ func (a *ZipArchiver) ArchiveDirectory(dirPath, zipPath string) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(zipPath), os.ModePerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(a.zipDir), os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create archive directory: %w", err)
 	}
 
-	err = os.WriteFile(zipPath, buf.Bytes(), 0644)
+	err = os.WriteFile(a.zipDir, buf.Bytes(), 0644)
 	if err != nil {
 		return err
 	}

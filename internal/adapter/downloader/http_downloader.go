@@ -15,25 +15,27 @@ import (
 	"github.com/google/uuid"
 )
 
-const destDir = "downloads"
+//const destDir = "downloads"
 
 type HTTPDownloader struct {
-	client *http.Client
-	a      *app.App
-	logger *slog.Logger
+	client      *http.Client
+	a           *app.App
+	downloadDir string
+	logger      *slog.Logger
 }
 
 var _ Downloader = (*HTTPDownloader)(nil)
 
-func NewHTTPDownloader(a *app.App, logger *slog.Logger, timeout time.Duration) *HTTPDownloader {
+func NewHTTPDownloader(a *app.App, downloadDir string, logger *slog.Logger, timeout time.Duration) *HTTPDownloader {
 	httpd := &HTTPDownloader{
-		client: &http.Client{Timeout: timeout},
-		a:      a,
-		logger: logger,
+		client:      &http.Client{Timeout: timeout},
+		a:           a,
+		downloadDir: downloadDir,
+		logger:      logger,
 	}
 
 	httpd.a.RegisterCleanup(func(ctx context.Context) {
-		if err := os.RemoveAll("downloads"); err != nil {
+		if err := os.RemoveAll(httpd.downloadDir); err != nil {
 			httpd.logger.Warn("failed to remove downloads directory")
 			return
 		}
@@ -57,12 +59,12 @@ func (d *HTTPDownloader) DownloadFile(url string, id uint64) error {
 	uuidStr := uuid.New().String()
 	fileName := fmt.Sprintf("%s_%s", uuidStr, baseName)
 
-	err = os.MkdirAll(fmt.Sprintf("%s/task-%d", destDir, id), os.ModePerm)
+	err = os.MkdirAll(fmt.Sprintf("%s/task-%d", d.downloadDir, id), os.ModePerm)
 	if err != nil {
 		return fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
-	filePath := fmt.Sprintf("%s/task-%d/%s", destDir, id, fileName)
+	filePath := fmt.Sprintf("%s/task-%d/%s", d.downloadDir, id, fileName)
 
 	resp, err := d.client.Get(url)
 	if err != nil {

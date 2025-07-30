@@ -20,26 +20,33 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug, AddSource: true}))
+	logger := slog.New(
+		slog.NewTextHandler(
+			os.Stdout, &slog.HandlerOptions{
+				Level:     slog.LevelDebug,
+				AddSource: true,
+			},
+		),
+	)
 
 	cfg := config.NewConfig()
 
 	a := app.NewApp(logger)
 	defer a.Shutdown()
 
-	z := archiver.NewZipArchiver(a, logger)
-	d := downloader.NewHTTPDownloader(a, logger, cfg.Timeout)
+	z := archiver.NewZipArchiver(a, cfg.ArchDir, logger)
+	d := downloader.NewHTTPDownloader(a, cfg.DownloadDir, logger, cfg.Timeout)
 	v := validation.NewHTTPValidator(cfg.Timeout)
 
 	l := usecase.NewLockTaskManager()
 
 	repo := repository.NewInMemoryTaskRepo()
 
-	taskQueue := make(chan *model.Task, 3)
+	taskQueue := make(chan *model.Task, cfg.MaxTasks)
 
-	ts := usecase.NewTaskService(repo, cfg.MaxTasks, cfg.MaxFilesInTask, logger, l, v, d, z, taskQueue)
+	ts := usecase.NewTaskService(repo, cfg, logger, l, v, d, z, taskQueue)
 
-	wp := usecase.NewWorkerPool(ctx, a, 3, ts, logger, taskQueue)
+	wp := usecase.NewWorkerPool(ctx, a, cfg.WorkersNum, ts, logger, taskQueue)
 	wp.Start()
 
 	srv := rest.NewServer(a, ts, logger, cfg.Port)
