@@ -147,8 +147,9 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 
 	task.Files = append(task.Files, file)
 
-	if len(task.Files) == 3 {
+	if len(task.Files) == int(s.maxFilesInTask) {
 		s.taskQueue <- task
+		s.logger.Info("task goes to queue")
 	}
 
 	s.logger.Info("added file to task",
@@ -209,7 +210,7 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 	dirPath := fmt.Sprintf("downloads/task-%d", task.ID)
 
 	sem := NewSemaphore(3)
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 
 	for _, file := range task.Files {
 		sem.Acquire()

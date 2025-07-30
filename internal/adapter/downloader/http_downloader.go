@@ -23,6 +23,8 @@ type HTTPDownloader struct {
 	logger *slog.Logger
 }
 
+var _ Downloader = (*HTTPDownloader)(nil)
+
 func NewHTTPDownloader(a *app.App, logger *slog.Logger, timeout time.Duration) *HTTPDownloader {
 	httpd := &HTTPDownloader{
 		client: &http.Client{Timeout: timeout},

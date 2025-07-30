@@ -12,6 +12,8 @@ type InMemoryTaskRepo struct {
 	tasks map[uint64]*model.Task
 }
 
+var _ TaskRepo = (*InMemoryTaskRepo)(nil)
+
 func NewInMemoryTaskRepo() *InMemoryTaskRepo {
 	return &InMemoryTaskRepo{
 		tasks: make(map[uint64]*model.Task),

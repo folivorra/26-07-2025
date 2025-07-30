@@ -9,6 +9,8 @@ type HTTPValidator struct {
 	client *http.Client
 }
 
+var _ FileValidator = (*HTTPValidator)(nil)
+
 func NewHTTPValidator(timeout time.Duration) *HTTPValidator {
 	return &HTTPValidator{
 		client: &http.Client{

@@ -18,6 +18,8 @@ type ZipArchiver struct {
 	logger *slog.Logger
 }
 
+var _ Archiver = (*ZipArchiver)(nil)
+
 func NewZipArchiver(a *app.App, logger *slog.Logger) *ZipArchiver {
 	za := &ZipArchiver{
 		a:      a,
