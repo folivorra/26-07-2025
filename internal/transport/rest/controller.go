@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strconv"
 
 	"github.com/folivorra/ziper/internal/model"
@@ -92,7 +93,7 @@ func (c *Controller) GetTaskStatusAndArchivePathHandler(w http.ResponseWriter, r
 	}{
 		Status: status,
 		URL:    url,
-	} // todo: file struct....
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if err = json.NewEncoder(w).Encode(response); err != nil {
@@ -102,11 +103,10 @@ func (c *Controller) GetTaskStatusAndArchivePathHandler(w http.ResponseWriter, r
 
 func (c *Controller) DownloadArchiveHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	id, err := strconv.ParseUint(vars["id"], 10, 64)
-	if err != nil {
-		http.Error(w, "invalid task id", http.StatusBadRequest)
-		return
-	}
+	filename := vars["filename"]
+
+	idStr := filename[len("task-") : len(filename)-len(".zip")]
+	id, err := strconv.ParseUint(idStr, 10, 64)
 
 	_, archiveURL, err := c.taskService.GetTaskStatusAndArchiveURL(id)
 	if err != nil {
@@ -119,14 +119,16 @@ func (c *Controller) DownloadArchiveHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	filePath := path.Join("archives", filename)
+
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"task-%d.zip\"", id))
-	http.ServeFile(w, r, archiveURL)
+	http.ServeFile(w, r, filePath)
 }
 
 func (c *Controller) RegisterRoutes(r *mux.Router) {
 	r.HandleFunc("/tasks", c.CreateTaskHandler).Methods("POST")
 	r.HandleFunc("/tasks/{id}", c.GetTaskStatusAndArchivePathHandler).Methods("GET")
 	r.HandleFunc("/tasks/{id}/add", c.AddFileByIDHandler).Methods("POST")
-	r.HandleFunc("/archives/{id}", c.DownloadArchiveHandler).Methods("GET")
+	r.HandleFunc("/archives/{filename:.+}", c.DownloadArchiveHandler).Methods("GET")
 }

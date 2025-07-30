@@ -74,7 +74,7 @@ func (s *TaskService) CreateTask() (uint64, error) {
 		ID:          id,
 		Status:      model.TaskStatusAccepted,
 		Files:       make([]*model.File, 0, 3),
-		ArchiveURL:  fmt.Sprintf("http://localhost:8080/archives/task-%d", id),
+		ArchiveURL:  fmt.Sprintf("http://localhost:8080/archives/task-%d.zip", id),
 		ArchivePath: fmt.Sprintf("archives/task-%d.zip", id),
 	}
 	s.repo.Save(task)
@@ -229,13 +229,13 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 					slog.String("error", err.Error()),
 				)
 				file.Status = model.FileStatusFailed
+			} else {
+				file.Status = model.FileStatusCompleted
+				s.logger.Info("file downloading successfully",
+					slog.Uint64("task_id", task.ID),
+					slog.String("file_url", file.URL),
+				)
 			}
-
-			file.Status = model.FileStatusCompleted
-			s.logger.Info("file downloading successfully",
-				slog.Uint64("task_id", task.ID),
-				slog.String("file_url", file.URL),
-			)
 		}(file)
 	}
 

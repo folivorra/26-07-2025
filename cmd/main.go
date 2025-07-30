@@ -24,7 +24,7 @@ func main() {
 
 	cfg := config.NewConfig()
 
-	a := app.NewApp(ctx, logger)
+	a := app.NewApp(logger)
 	defer a.Shutdown()
 
 	z := archiver.NewZipArchiver(a, logger)
@@ -37,15 +37,17 @@ func main() {
 
 	ts := usecase.NewTaskService(repo, cfg.MaxTasks, cfg.MaxFiles, logger, v, d, z, taskQueue)
 
-	wp := usecase.NewWorkerPool(ctx, 3, ts, logger, taskQueue)
+	wp := usecase.NewWorkerPool(ctx, a, 3, ts, logger, taskQueue)
 	wp.Start()
-	defer wp.Stop()
 
 	srv := rest.NewServer(a, ts, logger, cfg.Port)
 
-	if err := srv.Start(); err != nil {
-		return
-	}
+	go func() {
+		if err := srv.Start(); err != nil {
+			logger.Error("failed to start http server", slog.String("error", err.Error()))
+			a.Shutdown()
+		}
+	}()
 
 	a.Run()
 }

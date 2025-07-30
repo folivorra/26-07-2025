@@ -26,8 +26,10 @@ func NewZipArchiver(a *app.App, logger *slog.Logger) *ZipArchiver {
 
 	za.a.RegisterCleanup(func(ctx context.Context) {
 		if err := os.RemoveAll("archives"); err != nil {
-			za.logger.Warn("failed to remove old archives directory")
+			za.logger.Warn("failed to remove archives directory")
+			return
 		}
+		za.logger.Info("removed archives directory")
 	})
 
 	return za

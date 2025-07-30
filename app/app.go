@@ -9,20 +9,15 @@ import (
 )
 
 type App struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	cleanup    []func(context.Context)
 	shutdownCh chan os.Signal
+	cleanup    []func(context.Context)
 	logger     *slog.Logger
 }
 
-func NewApp(ctx context.Context, logger *slog.Logger) *App {
-	newCtx, cancel := context.WithCancel(ctx)
+func NewApp(logger *slog.Logger) *App {
 	return &App{
-		ctx:        newCtx,
 		shutdownCh: make(chan os.Signal, 1),
-		cleanup:    make([]func(context.Context), 10),
-		cancel:     cancel,
+		cleanup:    []func(context.Context){},
 		logger:     logger,
 	}
 }
@@ -36,12 +31,16 @@ func (a *App) Run() {
 }
 
 func (a *App) Shutdown() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	a.logger.Info("app shutting down")
+
 	for i := len(a.cleanup) - 1; i >= 0; i-- {
-		a.cleanup[i](a.ctx)
+		a.cleanup[i](ctx)
 	}
-	a.cancel()
-	a.logger.Info("app shut down")
+
+	a.logger.Info("app shutdown complete")
 }
 
 func (a *App) RegisterCleanup(f func(context.Context)) {

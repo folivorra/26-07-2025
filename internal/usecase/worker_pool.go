@@ -5,11 +5,13 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/folivorra/ziper/app"
 	"github.com/folivorra/ziper/internal/model"
 )
 
 type WorkerPool struct {
 	ctx        context.Context
+	app        *app.App
 	tasks      chan *model.Task
 	workersNum int
 	service    *TaskService
@@ -19,19 +21,28 @@ type WorkerPool struct {
 
 func NewWorkerPool(
 	ctx context.Context,
+	app *app.App,
 	workersNum int,
 	service *TaskService,
 	logger *slog.Logger,
 	tasks chan *model.Task,
 ) *WorkerPool {
-	return &WorkerPool{
+	wp := &WorkerPool{
 		ctx:        ctx,
+		app:        app,
 		tasks:      tasks,
 		workersNum: workersNum,
 		service:    service,
 		wg:         &sync.WaitGroup{},
 		logger:     logger,
 	}
+
+	wp.app.RegisterCleanup(func(ctx context.Context) {
+		wp.Stop()
+		wp.logger.Info("worker pool shutdown complete")
+	})
+
+	return wp
 }
 
 func (wp *WorkerPool) Start() {
@@ -79,7 +90,6 @@ func (wp *WorkerPool) Start() {
 func (wp *WorkerPool) Stop() {
 	close(wp.tasks)
 	wp.wg.Wait()
-	wp.logger.Info("worker pool stopped")
 }
 
 //func (wp *WorkerPool) AddTask(task *model.Task) {

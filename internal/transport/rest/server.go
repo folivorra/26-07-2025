@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"github.com/folivorra/ziper/internal/transport/middleware"
 	"log/slog"
 	"net/http"
 	"time"
@@ -18,6 +19,8 @@ type Server struct {
 
 func NewServer(app *app.App, ts *usecase.TaskService, logger *slog.Logger, port string) *Server {
 	r := mux.NewRouter()
+	r.Use(middleware.LoggingMiddleware(logger))
+	
 	c := NewController(ts, logger)
 	c.RegisterRoutes(r)
 
@@ -44,6 +47,7 @@ func NewServer(app *app.App, ts *usecase.TaskService, logger *slog.Logger, port 
 				slog.String("error", err.Error()),
 			)
 		}
+		s.logger.Info("HTTP server shutdown complete")
 	})
 
 	return s

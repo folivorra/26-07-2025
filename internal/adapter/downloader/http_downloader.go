@@ -32,8 +32,10 @@ func NewHTTPDownloader(a *app.App, logger *slog.Logger, timeout time.Duration) *
 
 	httpd.a.RegisterCleanup(func(ctx context.Context) {
 		if err := os.RemoveAll("downloads"); err != nil {
-			httpd.logger.Warn("failed to remove old downloads directory")
+			httpd.logger.Warn("failed to remove downloads directory")
+			return
 		}
+		httpd.logger.Info("removed downloads directory")
 	})
 
 	return httpd
