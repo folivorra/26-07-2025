@@ -17,14 +17,14 @@ const (
 )
 
 type Task struct {
-	ID          uint64     `json:"id"`
-	Status      TaskStatus `json:"status"`
-	Files       []*File    `json:"files,omitempty"`
-	ArchivePath string     `json:"archive_path,omitempty"`
-	ArchiveURL  string     `json:"archive_url,omitempty"`
+	ID          uint64
+	Status      TaskStatus
+	Files       []*File
+	ArchivePath string
+	ArchiveURL  string
 }
 
 type File struct {
-	Status FileStatus `json:"status"`
-	URL    string     `json:"url"`
+	Status FileStatus
+	URL    string
 }

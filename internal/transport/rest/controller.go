@@ -25,7 +25,7 @@ func NewController(taskService *usecase.TaskService, logger *slog.Logger) *Contr
 	}
 }
 
-func (c *Controller) CreateTaskHandler(w http.ResponseWriter, r *http.Request) {
+func (c *Controller) CreateTaskHandler(w http.ResponseWriter, _ *http.Request) {
 	id, err := c.taskService.CreateTask()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

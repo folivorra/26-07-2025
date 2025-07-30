@@ -34,6 +34,7 @@ func NewTaskService(
 	maxTasks uint64,
 	maxFilesInTask uint64,
 	logger *slog.Logger,
+	locker *LockTaskManager,
 	validr validation.FileValidator,
 	dowloadr downloader.Downloader,
 	archiver archiver.Archiver,
@@ -43,7 +44,7 @@ func NewTaskService(
 		repo:           repo,
 		maxTasks:       maxTasks,
 		maxFilesInTask: maxFilesInTask,
-		lockManager:    NewLockTaskManager(),
+		lockManager:    locker,
 		validr:         validr,
 		dowloadr:       dowloadr,
 		archiver:       archiver,
@@ -112,6 +113,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 	}
 
 	status := model.FileStatusAccepted
+	var returningErr error
 
 	if _, err := net.ParseRequestURI(url); err != nil {
 		s.logger.Warn("invalid url",
@@ -119,12 +121,14 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 			slog.String("error", err.Error()),
 		)
 		status = model.FileStatusFailed
+		returningErr = fmt.Errorf("invalid url %s", url)
 	} else {
 		if !s.validr.IsReachable(url) {
 			s.logger.Warn("file not reachable",
 				slog.String("url", url),
 			)
 			status = model.FileStatusFailed
+			returningErr = fmt.Errorf("file not reachable %s", url)
 		}
 
 		if !IsAllowedFileType(url) {
@@ -132,6 +136,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 				slog.String("file type", path.Ext(url)),
 			)
 			status = model.FileStatusInvalidType
+			returningErr = fmt.Errorf("invalid file type %s", path.Ext(url))
 		}
 	}
 
@@ -141,6 +146,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 	}
 
 	task.Files = append(task.Files, file)
+
 	if len(task.Files) == 3 {
 		s.taskQueue <- task
 	}
@@ -151,11 +157,13 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 		slog.String("file_url", file.URL),
 	)
 
-	return nil
+	return returningErr
 }
 
 func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, string, error) {
-	s.logger.Info("getting task status", slog.Uint64("id", id))
+	s.logger.Info("getting task status",
+		slog.Uint64("id", id),
+	)
 
 	task, err := s.repo.GetByID(id)
 	if err != nil {
@@ -171,6 +179,10 @@ func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, s
 	if len(task.Files) == int(s.maxFilesInTask) || task.Status == model.TaskStatusCompleted {
 		archURL = task.ArchiveURL
 	}
+
+	s.logger.Info("got archive url",
+		slog.Uint64("task_id", task.ID),
+	)
 
 	return status, archURL, nil
 }
@@ -247,7 +259,6 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 			slog.String("dir_path", dirPath),
 			slog.String("error", err.Error()),
 		)
-		//task.Status = TaskStatusFailed
 	}
 
 	task.Status = model.TaskStatusCompleted

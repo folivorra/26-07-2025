@@ -31,11 +31,13 @@ func main() {
 	d := downloader.NewHTTPDownloader(a, logger, cfg.Timeout)
 	v := validation.NewHTTPValidator(cfg.Timeout)
 
+	l := usecase.NewLockTaskManager()
+
 	repo := repository.NewInMemoryTaskRepo()
 
 	taskQueue := make(chan *model.Task, 3)
 
-	ts := usecase.NewTaskService(repo, cfg.MaxTasks, cfg.MaxFiles, logger, v, d, z, taskQueue)
+	ts := usecase.NewTaskService(repo, cfg.MaxTasks, cfg.MaxFilesInTask, logger, l, v, d, z, taskQueue)
 
 	wp := usecase.NewWorkerPool(ctx, a, 3, ts, logger, taskQueue)
 	wp.Start()
