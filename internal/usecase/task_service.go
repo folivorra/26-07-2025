@@ -2,17 +2,18 @@ package usecase
 
 import (
 	"fmt"
+	"log/slog"
+	net "net/url"
+	"path"
+	"sync"
+	"sync/atomic"
+
 	"github.com/folivorra/ziper/internal/adapter/archiver"
 	"github.com/folivorra/ziper/internal/adapter/downloader"
 	"github.com/folivorra/ziper/internal/config"
 	"github.com/folivorra/ziper/internal/model"
 	"github.com/folivorra/ziper/internal/repository"
 	"github.com/folivorra/ziper/internal/transport/validation"
-	"log/slog"
-	net "net/url"
-	"path"
-	"sync"
-	"sync/atomic"
 )
 
 type TaskService struct {
@@ -205,7 +206,7 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 
 	dirPath := fmt.Sprintf("downloads/task-%d", task.ID)
 
-	sem := NewSemaphore(3)
+	sem := NewSemaphore(int(s.cfg.MaxFilesInTask))
 	var wg sync.WaitGroup
 
 	for _, file := range task.Files {

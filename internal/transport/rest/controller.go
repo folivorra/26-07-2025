@@ -128,7 +128,7 @@ func (c *Controller) DownloadArchiveHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if taskStatus == model.TaskStatusInProgress {
-		http.Error(w, "archive is already in progress", http.StatusAccepted)
+		http.Error(w, "archive still in progress", http.StatusAccepted)
 		return
 	}
 
