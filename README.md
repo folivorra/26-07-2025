@@ -29,7 +29,7 @@
 1. Конфигурация .env файла
 
 ```shell
-vim .local.env
+vim .env.local
 ```
 
 2. Сборка и запуск

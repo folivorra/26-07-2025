@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/joho/godotenv"
 	"log/slog"
 	"os"
 
@@ -28,6 +29,11 @@ func main() {
 			},
 		),
 	)
+
+	err := godotenv.Load(".env.local")
+	if err != nil {
+		logger.Warn("load .env.local error")
+	}
 
 	cfg := config.NewConfig()
 
