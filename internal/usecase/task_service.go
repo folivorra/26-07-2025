@@ -83,7 +83,7 @@ func (s *TaskService) CreateTask() (uint64, error) {
 	return id, nil
 }
 
-func (s *TaskService) AddFileByID(id uint64, url string) error {
+func (s *TaskService) AddFileByID(id uint64, url string) (model.FileStatus, error) {
 	lock := s.lockManager.GetLock(id)
 	lock.Lock()
 	defer lock.Unlock()
@@ -99,7 +99,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 			slog.Uint64("id", id),
 			slog.String("error", err.Error()),
 		)
-		return fmt.Errorf("not found task by id %d", id)
+		return model.FileStatusFailed, fmt.Errorf("not found task by id %d", id)
 	}
 
 	if !CanAddFileInTask(uint64(len(task.Files)), s.cfg.MaxFilesInTask) {
@@ -107,7 +107,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 			slog.Uint64("maxFilesInTask", s.cfg.MaxFilesInTask),
 			slog.Uint64("currentFiles", uint64(len(task.Files))),
 		)
-		return fmt.Errorf("task exceeds max files %d", s.cfg.MaxFilesInTask)
+		return model.FileStatusFailed, fmt.Errorf("task exceeds max files %d", s.cfg.MaxFilesInTask)
 	}
 
 	status := model.FileStatusAccepted
@@ -118,24 +118,20 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 			slog.String("url", url),
 			slog.String("error", err.Error()),
 		)
-		status = model.FileStatusFailed
+		status = model.FileStatusInvalidURL
 		returningErr = fmt.Errorf("invalid url %s", url)
-	} else {
-		if !s.validr.IsReachable(url) {
-			s.logger.Warn("file not reachable",
-				slog.String("url", url),
-			)
-			status = model.FileStatusFailed
-			returningErr = fmt.Errorf("file not reachable %s", url)
-		}
-
-		if !IsAllowedFileType(url) {
-			s.logger.Warn("invalid file type",
-				slog.String("file type", path.Ext(url)),
-			)
-			status = model.FileStatusInvalidType
-			returningErr = fmt.Errorf("invalid file type %s", path.Ext(url))
-		}
+	} else if !IsAllowedFileType(url) {
+		s.logger.Warn("not supported file type",
+			slog.String("file type", path.Ext(url)),
+		)
+		status = model.FileStatusNotSupportedType
+		returningErr = fmt.Errorf("not supported file type %s", path.Ext(url))
+	} else if !s.validr.IsReachable(url) {
+		s.logger.Warn("file not reachable",
+			slog.String("url", url),
+		)
+		status = model.FileStatusNotReachable
+		returningErr = fmt.Errorf("file not reachable %s", url)
 	}
 
 	file := &model.File{
@@ -156,7 +152,7 @@ func (s *TaskService) AddFileByID(id uint64, url string) error {
 		slog.String("file_url", file.URL),
 	)
 
-	return returningErr
+	return status, returningErr
 }
 
 func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, string, error) {

@@ -10,10 +10,12 @@ const (
 	TaskStatusInProgress TaskStatus = "in_progress"
 	TaskStatusCompleted  TaskStatus = "completed"
 
-	FileStatusAccepted    FileStatus = "accepted"
-	FileStatusCompleted   FileStatus = "completed"
-	FileStatusFailed      FileStatus = "failed"
-	FileStatusInvalidType FileStatus = "invalid_type"
+	FileStatusAccepted         FileStatus = "accepted"
+	FileStatusCompleted        FileStatus = "completed"
+	FileStatusFailed           FileStatus = "failed"
+	FileStatusInvalidURL       FileStatus = "invalid_url"
+	FileStatusNotReachable     FileStatus = "not_reachable"
+	FileStatusNotSupportedType FileStatus = "not_supported_type"
 )
 
 type Task struct {

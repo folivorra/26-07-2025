@@ -64,13 +64,22 @@ func (c *Controller) AddFileByIDHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := c.taskService.AddFileByID(id, request.URL); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	status, err := c.taskService.AddFileByID(id, request.URL)
+
+	response := struct {
+		FileStatus model.FileStatus `json:"status"`
+	}{
+		FileStatus: status,
+	}
+
+	if err != nil && response.FileStatus == model.FileStatusFailed {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func (c *Controller) GetTaskStatusAndArchivePathHandler(w http.ResponseWriter, r *http.Request) {
