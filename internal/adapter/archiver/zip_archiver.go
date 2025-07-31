@@ -78,11 +78,14 @@ func (a *ZipArchiver) ArchiveDirectory(dirPath string) error {
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(a.zipDir), os.ModePerm); err != nil {
+	zipName := filepath.Base(dirPath) + ".zip"
+	zipPath := filepath.Join(a.zipDir, zipName)
+
+	if err := os.MkdirAll(a.zipDir, os.ModePerm); err != nil {
 		return fmt.Errorf("failed to create archive directory: %w", err)
 	}
 
-	err = os.WriteFile(a.zipDir, buf.Bytes(), 0644)
+	err = os.WriteFile(zipPath, buf.Bytes(), 0644)
 	if err != nil {
 		return err
 	}
