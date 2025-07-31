@@ -121,14 +121,14 @@ func (c *Controller) DownloadArchiveHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	_, archiveURL, err := c.taskService.GetTaskStatusAndArchiveURL(id)
+	taskStatus, _, err := c.taskService.GetTaskStatusAndArchiveURL(id)
 	if err != nil {
 		http.Error(w, "failed to get archive path", http.StatusNotFound)
 		return
 	}
 
-	if archiveURL == "" {
-		http.Error(w, "archive not ready", http.StatusAccepted)
+	if taskStatus == model.TaskStatusInProgress {
+		http.Error(w, "archive is already in progress", http.StatusAccepted)
 		return
 	}
 

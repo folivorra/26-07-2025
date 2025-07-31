@@ -2,18 +2,17 @@ package usecase
 
 import (
 	"fmt"
+	"github.com/folivorra/ziper/internal/adapter/archiver"
+	"github.com/folivorra/ziper/internal/adapter/downloader"
 	"github.com/folivorra/ziper/internal/config"
+	"github.com/folivorra/ziper/internal/model"
+	"github.com/folivorra/ziper/internal/repository"
+	"github.com/folivorra/ziper/internal/transport/validation"
 	"log/slog"
 	net "net/url"
 	"path"
 	"sync"
 	"sync/atomic"
-
-	"github.com/folivorra/ziper/internal/adapter/archiver"
-	"github.com/folivorra/ziper/internal/adapter/downloader"
-	"github.com/folivorra/ziper/internal/model"
-	"github.com/folivorra/ziper/internal/repository"
-	"github.com/folivorra/ziper/internal/transport/validation"
 )
 
 type TaskService struct {
@@ -173,9 +172,12 @@ func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, s
 	archURL := ""
 	if len(task.Files) == int(s.cfg.MaxFilesInTask) || task.Status == model.TaskStatusCompleted {
 		archURL = task.ArchiveURL
+		s.logger.Info("got archive url",
+			slog.Uint64("task_id", task.ID),
+		)
 	}
 
-	s.logger.Info("got archive url",
+	s.logger.Info("got task status",
 		slog.Uint64("task_id", task.ID),
 	)
 
