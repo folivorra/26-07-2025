@@ -84,10 +84,6 @@ func (s *TaskService) CreateTask() (uint64, error) {
 }
 
 func (s *TaskService) AddFileByID(id uint64, url string) (model.FileStatus, error) {
-	lock := s.lockManager.GetLock(id)
-	lock.Lock()
-	defer lock.Unlock()
-
 	s.logger.Info("adding file to task",
 		slog.Uint64("id", id),
 		slog.String("url", url),
@@ -101,6 +97,10 @@ func (s *TaskService) AddFileByID(id uint64, url string) (model.FileStatus, erro
 		)
 		return model.FileStatusFailed, fmt.Errorf("not found task by id %d", id)
 	}
+
+	lock := s.lockManager.GetLock(id)
+	lock.Lock()
+	defer lock.Unlock()
 
 	if !CanAddFileInTask(uint64(len(task.Files)), s.cfg.MaxFilesInTask) {
 		s.logger.Error("task exceeds max files",
@@ -169,6 +169,10 @@ func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, s
 		return "", "", fmt.Errorf("not found task by id %d", id)
 	}
 
+	lock := s.lockManager.GetLock(task.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
 	status := task.Status
 	archURL := ""
 	if len(task.Files) == int(s.cfg.MaxFilesInTask) || task.Status == model.TaskStatusCompleted {
@@ -186,13 +190,15 @@ func (s *TaskService) GetTaskStatusAndArchiveURL(id uint64) (model.TaskStatus, s
 }
 
 func (s *TaskService) ProcessTask(task *model.Task) error {
-	lock := s.lockManager.GetLock(task.ID)
-	lock.Lock()
-	defer lock.Unlock()
+	defer s.activeTasks.Add(^uint64(0))
 
 	s.logger.Info("processing task",
 		slog.Uint64("id", task.ID),
 	)
+
+	lock := s.lockManager.GetLock(task.ID)
+	lock.Lock()
+	defer lock.Unlock()
 
 	if task.Status != model.TaskStatusAccepted {
 		s.logger.Warn("task already processed",
@@ -222,8 +228,8 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 						slog.String("file_url", file.URL),
 						slog.Any("error", r),
 					)
+					file.Status = model.FileStatusFailed
 				}
-				file.Status = model.FileStatusFailed
 			}()
 
 			s.logger.Info("downloading file",
@@ -260,7 +266,6 @@ func (s *TaskService) ProcessTask(task *model.Task) error {
 	}
 
 	task.Status = model.TaskStatusCompleted
-	s.activeTasks.Add(^uint64(0))
 
 	s.logger.Info("task processing completed",
 		slog.Uint64("id", task.ID),
